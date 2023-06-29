@@ -51,7 +51,7 @@ func New(id uint64) *FileSystem {
 
 	lines := strings.Split(string(data), "\n")
 
-	size, err := strconv.Atoi(removeBackSlash(lines[0]))
+	size, err := strconv.Atoi(os.Getenv("PARTITIONS"))
 
 	if err != nil {
 		log.Panic("Unable to create file system. Error on table size load: ", err.Error())
@@ -61,7 +61,7 @@ func New(id uint64) *FileSystem {
 	table := make([]Node, 0)
 
 	for i := range lines {
-		if i > 0 {
+		if len(lines[i]) > 1 {
 			cols := strings.Split(lines[i], " ")
 
 			if len(cols) < 4 {

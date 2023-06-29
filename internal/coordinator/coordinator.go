@@ -64,7 +64,9 @@ func (cd *Coordinator) queueHandler() {
 }
 
 func (cd *Coordinator) Handler() {
-	godotenv.Load(".env")
+	if err := godotenv.Load(".env"); err != nil {
+		log.Panic(err.Error())
+	}
 
 	l, err := net.Listen(protocol, os.Getenv("CTRADRESS"))
 
