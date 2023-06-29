@@ -1,5 +1,5 @@
-# MutualExclusionWithElection
-Implementing a centralize mutual exclusion on a Distributed System with Eletion has redundancy method
+# DHTWithMutualExclusion
+Final project of the distributed computation chair, implementation of a system that implement distributed hash table and mutual exclusion by coordinator
 ## TO DO
  * Thing in the logic of the system: objects, routines and nodes
  * Adapt the distributed hashtable to the business rules and use Linked HashTable rather then Open
