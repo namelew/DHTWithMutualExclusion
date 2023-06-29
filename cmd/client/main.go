@@ -48,8 +48,8 @@ func main() {
 		}
 
 		m.Action = messages.Action(a)
-		m.Key = input[2]
-		m.Name = sanitaze(strings.Join(input[3:], " "))
+		//m.Key = input[2]
+		//m.Name = sanitaze(strings.Join(input[3:], " "))
 
 		conn, err := net.Dial("tcp", input[1])
 

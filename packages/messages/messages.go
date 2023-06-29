@@ -21,26 +21,32 @@ const (
 	ACK     Action = 9
 )
 
+type Aluno struct {
+	CPF    string
+	Nome   string
+	Curso  string
+	Turmas []string
+}
+
 type Message struct {
 	Id       uint64
 	Action   Action
-	Key      string
-	Name     string
+	Payload  Aluno
 	Lockback string
 }
 
-func (m *Message) Index() int {
+func (a *Aluno) Index() int {
 	sum := 0
 
-	for i := range m.Key {
-		sum += int(m.Key[i])
+	for i := range a.CPF {
+		sum += int(a.CPF[i])
 	}
 
 	return sum
 }
 
-func (m *Message) Value() string {
-	return m.Key
+func (a *Aluno) Value() string {
+	return a.CPF
 }
 
 func (m *Message) Pack() ([]byte, error) {

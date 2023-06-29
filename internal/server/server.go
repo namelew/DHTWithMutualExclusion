@@ -27,7 +27,7 @@ type FileSystem struct {
 	end          int
 	lock         sync.Mutex
 	neighborhood []Node
-	inodes       hashtable.HashTable[string, string]
+	inodes       hashtable.HashTable[string, *messages.Aluno]
 }
 
 const SOURCEFILE = "./routing_table.in"
@@ -97,13 +97,13 @@ func New(id uint64) *FileSystem {
 		start:        table[id].start,
 		end:          table[id].end,
 		neighborhood: table,
-		inodes:       hashtable.New[string, string](&hashtable.Open[string, string]{}, hashtable.Common{Size: size, End: table[id].end}),
+		inodes:       hashtable.New[string, *messages.Aluno](&hashtable.Linked[string, *messages.Aluno]{}, hashtable.Common{Size: size}),
 	}
 }
 
-func (fs *FileSystem) redirect(m *messages.Message) messages.Message {
+func (fs *FileSystem) redirect(m *messages.Message) *messages.Message {
 	for nid := range fs.neighborhood {
-		slot := fs.inodes.Hash(m)
+		slot := fs.inodes.Hash(&m.Payload)
 
 		if slot >= fs.neighborhood[nid].start && slot <= fs.neighborhood[nid].end {
 			log.Println("Request redirect to server", nid, " in adress", fs.neighborhood[nid].adress)
@@ -111,14 +111,14 @@ func (fs *FileSystem) redirect(m *messages.Message) messages.Message {
 
 			if err != nil {
 				log.Println("Unable to create connection with node", nid, ":", err.Error())
-				return messages.Message{}
+				return nil
 			}
 
 			defer conn.Close()
 
 			if err := m.Send(conn); err != nil {
 				log.Println("Unable to send request. ", err.Error())
-				return messages.Message{}
+				return nil
 			}
 
 			if err := m.Receive(conn); err != nil {
@@ -126,71 +126,71 @@ func (fs *FileSystem) redirect(m *messages.Message) messages.Message {
 				continue
 			}
 
-			return *m
+			return m
 		}
 	}
 
-	return messages.Message{}
+	return nil
 }
 
-func (fs *FileSystem) insert(m *messages.Message) messages.Message {
+func (fs *FileSystem) insert(m *messages.Message) *messages.Message {
 	fs.lock.Lock()
 	defer fs.lock.Unlock()
 
-	if fs.inodes.Hash(m) >= fs.start && fs.inodes.Hash(m) <= fs.end {
-		if err := fs.inodes.Insert(m, m.Name); err != nil {
-			log.Printf("Unable to insert %s in register: %s\n", m.Name, err.Error())
-			return messages.Message{}
+	if fs.inodes.Hash(&m.Payload) >= fs.start && fs.inodes.Hash(&m.Payload) <= fs.end {
+		if err := fs.inodes.Insert(&m.Payload, &m.Payload); err != nil {
+			log.Printf("Unable to insert %v in register: %s\n", m.Payload, err.Error())
+			return nil
 		}
-		log.Printf("Register %s was inserted with key %s in slot %d\n", m.Name, m.Key, fs.inodes.Hash(m))
+		log.Printf("Register %s was inserted with key %s in slot %d\n", m.Payload.Nome, m.Payload.CPF, fs.inodes.Hash(&m.Payload))
 	} else {
 		log.Println("Out of domain! Redirecting request...")
 		return fs.redirect(m)
 	}
 
-	return messages.Message{Action: messages.ACK}
+	return &messages.Message{Action: messages.ACK}
 }
 
-func (fs *FileSystem) query(m *messages.Message) messages.Message {
+func (fs *FileSystem) query(m *messages.Message) *messages.Message {
 	fs.lock.Lock()
 	defer fs.lock.Unlock()
 
 	response := messages.Message{
-		Key:    m.Key,
-		Action: messages.ACK,
+		Payload: m.Payload,
+		Action:  messages.ACK,
 	}
 
-	if fs.inodes.Hash(m) >= fs.start && fs.inodes.Hash(m) <= fs.end {
-		data, err := fs.inodes.Search(m)
+	if fs.inodes.Hash(&m.Payload) >= fs.start && fs.inodes.Hash(&m.Payload) <= fs.end {
+		data, err := fs.inodes.Search(&m.Payload)
 		if err != nil {
-			log.Printf("Unable to find %s in register: %s\n", m.Key, err.Error())
-			return messages.Message{}
+			log.Printf("Unable to find %s in register: %s\n", m.Payload.CPF, err.Error())
+			return nil
 		}
-		response.Name = data
+		response.Payload = *data
 	} else {
 		log.Println("Out of domain! Redirecting request...")
 		return fs.redirect(m)
 	}
 
-	return response
+	return &response
 }
 
-func (fs *FileSystem) remove(m *messages.Message) messages.Message {
+func (fs *FileSystem) remove(m *messages.Message) *messages.Message {
 	fs.lock.Lock()
 	defer fs.lock.Unlock()
 
-	if fs.inodes.Hash(m) >= fs.start && fs.inodes.Hash(m) <= fs.end {
-		if err := fs.inodes.Delete(m); err != nil {
-			log.Printf("Unable to remove %s from register: %s\n", m.Name, err.Error())
-			return messages.Message{}
+	if fs.inodes.Hash(&m.Payload) >= fs.start && fs.inodes.Hash(&m.Payload) <= fs.end {
+		if err := fs.inodes.Delete(&m.Payload); err != nil {
+			log.Printf("Unable to remove %s from register: %s\n", m.Payload.CPF, err.Error())
+			return nil
 		}
-		log.Printf("Register in key %s was removed\n", m.Key)
+		log.Printf("Register in key %s was removed\n", m.Payload.CPF)
 	} else {
 		log.Println("Out of domain! Redirecting request...")
 		return fs.redirect(m)
 	}
 
-	return messages.Message{Action: messages.ACK}
+	return &messages.Message{Action: messages.ACK}
 }
 
 func (fs *FileSystem) handlerRequests() {
@@ -209,7 +209,7 @@ func (fs *FileSystem) handlerRequests() {
 		}
 
 		go func(c net.Conn) {
-			var request, response messages.Message
+			var request, response *messages.Message
 
 			if err := request.Receive(c); err != nil {
 				log.Println("Unable to receive message from ", c.RemoteAddr().String(), ":", err.Error())
@@ -218,11 +218,15 @@ func (fs *FileSystem) handlerRequests() {
 
 			switch request.Action {
 			case messages.INSERT:
-				response = fs.insert(&request)
+				response = fs.insert(request)
 			case messages.QUERY:
-				response = fs.query(&request)
+				response = fs.query(request)
 			case messages.REMOVE:
-				response = fs.remove(&request)
+				response = fs.remove(request)
+			}
+
+			if response == nil {
+				response = &messages.Message{}
 			}
 
 			if err := response.Send(c); err != nil {
