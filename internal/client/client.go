@@ -15,86 +15,66 @@ const protocol = "tcp"
 type Client struct {
 	id      int
 	adress  string
-	usetime time.Duration
 }
 
-func New(id int, adress string, useDelay time.Duration) *Client {
+func New(id int, adress string) *Client {
 	return &Client{
 		id:      id,
 		adress:  adress,
-		usetime: useDelay,
 	}
 }
 
 func (c *Client) Run() {
-	enterRegion := func() {
-		log.Printf("Client %d enter the critical region\n", c.id)
-		time.Sleep(c.usetime)
-		c.Unlock()
-	}
 	for {
 		switch c.Lock() {
 		case messages.ALLOW:
-			enterRegion()
 		case messages.REFUSE:
-			waitTime := rand.Intn(10)
-			l, err := net.Listen("tcp", c.adress)
-
-			if err != nil {
-				log.Println("Error to open listener. ", err.Error())
-				time.Sleep(time.Second * time.Duration(waitTime))
-				continue
-			}
-
-			for {
-				c, err := l.Accept()
-
-				if err != nil {
-					log.Println("Error to accept connection. ", err.Error())
-					time.Sleep(time.Second * time.Duration(waitTime))
-					continue
-				}
-
-				buffer := make([]byte, 1024)
-				var m messages.Message
-				n, err := c.Read(buffer)
-
-				if err != nil {
-					log.Println("Error to read from connection. ", err.Error())
-					c.Close()
-					time.Sleep(time.Second * time.Duration(waitTime))
-					continue
-				}
-
-				c.Close()
-
-				if err := m.Unpack(buffer[:n]); err != nil {
-					log.Println("Unable to unpack data from buffer. ", err.Error())
-					time.Sleep(time.Second * time.Duration(waitTime))
-					continue
-				}
-
-				if m.Action == messages.ALLOW {
-					enterRegion()
-					break
-				}
-			}
-
-			l.Close()
+			c.Wait()
 		default:
-			waitTime := rand.Intn(10)
-			log.Printf("Client %d can't enter the critical region and will sleep %d seconds\n", c.id, waitTime)
+			log.Println("Permition error: unable to acess DHT")
+		}
+	}
+}
+
+func (c *Client) Wait() {
+	waitTime := rand.Intn(10)
+	l, err := net.Listen("tcp", c.adress)
+
+	if err != nil {
+		log.Println("Error to open listener.", err.Error())
+		time.Sleep(time.Second * time.Duration(waitTime))
+		return
+	}
+
+	for {
+		c, err := l.Accept()
+
+		if err != nil {
+			log.Println("Error to accept connection.", err.Error())
 			time.Sleep(time.Second * time.Duration(waitTime))
+			continue
+		}
+
+		request := messages.Message{}
+
+		if err := request.Receive(c); err != nil {
+			log.Println("Error to accept connection.", err.Error())
+			time.Sleep(time.Second * time.Duration(waitTime))
+			continue
+		}
+
+		if request.Action == messages.ALLOW {
+			l.Close()
+			return
 		}
 	}
 }
 
 func (c *Client) Lock() messages.Action {
 	conn, err := net.Dial(protocol, os.Getenv("CTRADRESS"))
-	buffer := make([]byte, 256)
 
 	if err != nil {
-		log.Println("Unable to create connection with Coordenator. ", err.Error())
+		log.Println("Unable to create connection with Coordenator.", err.Error())
 		return messages.ERROR
 	}
 
@@ -104,27 +84,17 @@ func (c *Client) Lock() messages.Action {
 		Lockback: c.adress,
 	}
 
-	requestPayload, err := request.Pack()
-
-	if err != nil {
-		log.Println("Unable to create request message. ", err.Error())
+	if err := request.Send(conn); err != nil {
+		log.Println("Unable to send request from coordinator.", err.Error())
 		return messages.ERROR
 	}
 
-	conn.Write(requestPayload)
+	var response messages.Message
 
-	time.After(time.Second * 5)
-
-	n, err := conn.Read(buffer)
-
-	if err != nil {
-		log.Println("Unable to read data from coordinator. ", err.Error())
+	if err := response.Receive(conn); err != nil {
+		log.Println("Unable to read data from coordinator.", err.Error())
 		return messages.ERROR
 	}
-
-	response := messages.Message{}
-
-	response.Unpack(buffer[:n])
 
 	return response.Action
 }
@@ -133,7 +103,7 @@ func (c *Client) Unlock() {
 	conn, err := net.Dial(protocol, os.Getenv("CTRADRESS"))
 
 	if err != nil {
-		log.Println("Unable to create connection with Coordenator. ", err.Error())
+		log.Println("Unable to create connection with Coordenator.", err.Error())
 		return
 	}
 
@@ -143,14 +113,8 @@ func (c *Client) Unlock() {
 		Lockback: c.adress,
 	}
 
-	requestPayload, err := request.Pack()
-
-	if err != nil {
-		log.Println("Unable to create unlock message. ", err.Error())
+	if err := request.Receive(conn); err != nil {
+		log.Println("Unable to send unlock message.", err.Error())
 		return
 	}
-
-	conn.Write(requestPayload)
-
-	time.After(time.Second * 5)
 }

@@ -1,7 +1,6 @@
 package coordinator
 
 import (
-	"bufio"
 	"log"
 	"net"
 	"os"
@@ -17,7 +16,7 @@ const protocol = "tcp"
 type Coordinator struct {
 	request        *queue.Queue[messages.Message]
 	mutex          *sync.Mutex
-	freeRegion     chan interface{}
+	freeRegion     chan bool
 	criticalRegion bool
 }
 
@@ -25,7 +24,7 @@ func Build() *Coordinator {
 	return &Coordinator{
 		request:        &queue.Queue[messages.Message]{},
 		mutex:          &sync.Mutex{},
-		freeRegion:     make(chan interface{}, 1),
+		freeRegion:     make(chan bool, 1),
 		criticalRegion: false,
 	}
 }
@@ -46,17 +45,24 @@ func (cd *Coordinator) queueHandler() {
 			conn, err := net.Dial(protocol, m.Lockback)
 
 			if err != nil {
-				log.Println("Unable to create connection with client ", m.Id, ". ", err.Error())
+				log.Println("Unable to create connection with client", m.Id, ".", err.Error())
 				return
 			}
 
-			log.Println("Allowing acess to ", m.Id)
+			defer conn.Close()
 
-			Send(conn, &messages.Message{
+			log.Println("Allowing acess to", m.Id)
+
+			response := messages.Message{
 				Id:       0,
 				Action:   messages.ALLOW,
 				Lockback: os.Getenv("CTRADRESS"),
-			})
+			}
+
+			if err := response.Send(conn); err != nil {
+				log.Println("Queue Handler: can't send allow message.", err.Error())
+				return
+			}
 		}(&m)
 
 		cd.mutex.Unlock()
@@ -86,19 +92,11 @@ func (cd *Coordinator) Handler() {
 
 		go func(c net.Conn) {
 			var in, out messages.Message
-			b := make([]byte, 1024)
-
-			n, err := bufio.NewReader(c).Read(b)
 
 			defer c.Close()
 
-			if err != nil {
-				log.Println("Unable to read data from "+c.RemoteAddr().String()+". ", err.Error())
-				return
-			}
-
-			if err := in.Unpack(b[:n]); err != nil {
-				log.Println("Unable to unpack data from "+c.RemoteAddr().String()+". ", err.Error())
+			if err := in.Receive(c); err != nil {
+				log.Println("Handler Request error:", err.Error())
 				return
 			}
 
@@ -125,23 +123,10 @@ func (cd *Coordinator) Handler() {
 				cd.freeRegion <- true
 			}
 
-			Send(c, &out)
+			if err := out.Send(c); err != nil {
+				log.Println("Handler request error:", err.Error())
+				return
+			}
 		}(request)
-	}
-}
-
-func Send(c net.Conn, m *messages.Message) {
-	payload, err := m.Pack()
-
-	if err != nil {
-		log.Println("Unable to pack message. ", err.Error())
-		return
-	}
-
-	_, err = c.Write(payload)
-
-	if err != nil {
-		log.Println("Unable to send message to "+c.RemoteAddr().String()+". ", err.Error())
-		return
 	}
 }
