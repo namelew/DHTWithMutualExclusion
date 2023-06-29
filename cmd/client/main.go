@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -25,6 +26,7 @@ func main() {
 	r := bufio.NewReader(os.Stdin)
 
 	for {
+		fmt.Println("Expect: Action Adress Key Course Name")
 		p, err := r.ReadSlice('\n')
 
 		if err != nil {
@@ -34,7 +36,7 @@ func main() {
 
 		input := strings.Split(string(p), " ")
 
-		if len(input) < 4 {
+		if len(input) < 6 {
 			continue
 		}
 
@@ -48,8 +50,22 @@ func main() {
 		}
 
 		m.Action = messages.Action(a)
-		//m.Key = input[2]
-		//m.Name = sanitaze(strings.Join(input[3:], " "))
+		m.Payload.CPF = input[2]
+		m.Payload.Curso = sanitaze(input[3])
+		m.Payload.Nome = sanitaze(strings.Join(input[4:], " "))
+
+		fmt.Println("Expect: Turma1 Turma2 ...")
+
+		p, err = r.ReadSlice('\n')
+
+		if err != nil {
+			log.Println(err.Error())
+			continue
+		}
+
+		for _, turma := range strings.Split(string(p), " ") {
+			m.Payload.Turmas = append(m.Payload.Turmas, sanitaze(turma))
+		}
 
 		conn, err := net.Dial("tcp", input[1])
 

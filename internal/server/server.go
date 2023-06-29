@@ -209,7 +209,8 @@ func (fs *FileSystem) handlerRequests() {
 		}
 
 		go func(c net.Conn) {
-			var request, response *messages.Message
+			var request messages.Message
+			var response *messages.Message
 
 			if err := request.Receive(c); err != nil {
 				log.Println("Unable to receive message from ", c.RemoteAddr().String(), ":", err.Error())
@@ -218,11 +219,11 @@ func (fs *FileSystem) handlerRequests() {
 
 			switch request.Action {
 			case messages.INSERT:
-				response = fs.insert(request)
+				response = fs.insert(&request)
 			case messages.QUERY:
-				response = fs.query(request)
+				response = fs.query(&request)
 			case messages.REMOVE:
-				response = fs.remove(request)
+				response = fs.remove(&request)
 			}
 
 			if response == nil {
