@@ -104,8 +104,21 @@ func main() {
 
 		conn.Close()
 
-		log.Println(m)
-
 		mutex.Unlock()
+
+		switch m.Action {
+		case messages.ACK:
+			empty := messages.Aluno{}
+			log.Println("Sucess!")
+			if m.Payload.Nome != empty.Nome {
+				log.Println("Resultado")
+				log.Println("Nome:", m.Payload.Nome)
+				log.Println("CPF:", m.Payload.CPF)
+				log.Println("Curso:", m.Payload.Curso)
+				log.Println("Turmas:", m.Payload.Turmas)
+			}
+		case messages.ERROR:
+			log.Println("Erro!")
+		}
 	}
 }
