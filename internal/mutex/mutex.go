@@ -1,6 +1,7 @@
-package client
+package mutex
 
 import (
+	"errors"
 	"log"
 	"math/rand"
 	"net"
@@ -13,26 +14,29 @@ import (
 const protocol = "tcp"
 
 type Client struct {
-	id      int
-	adress  string
+	id     int
+	adress string
 }
 
 func New(id int, adress string) *Client {
 	return &Client{
-		id:      id,
-		adress:  adress,
+		id:     id,
+		adress: adress,
 	}
 }
 
-func (c *Client) Run() {
-	for {
-		switch c.Lock() {
-		case messages.ALLOW:
-		case messages.REFUSE:
-			c.Wait()
-		default:
-			log.Println("Permition error: unable to acess DHT")
-		}
+func (c *Client) RequestAcess() error {
+	switch c.Lock() {
+	case messages.ALLOW:
+		log.Println("Permission granted")
+		return nil
+	case messages.REFUSE:
+		log.Println("Permission denied, waiting allow message")
+		c.Wait()
+		log.Println("Permission granted")
+		return nil
+	default:
+		return errors.New("permition error: unable to acess DHT")
 	}
 }
 
@@ -113,8 +117,15 @@ func (c *Client) Unlock() {
 		Lockback: c.adress,
 	}
 
-	if err := request.Receive(conn); err != nil {
+	if err := request.Send(conn); err != nil {
 		log.Println("Unable to send unlock message.", err.Error())
+		return
+	}
+
+	time.Sleep(time.Second * 3)
+
+	if err := request.Receive(conn); err != nil {
+		log.Println("Unable to receive confirmation message.", err.Error())
 		return
 	}
 }

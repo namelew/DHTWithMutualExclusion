@@ -4,7 +4,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/joho/godotenv"
 	"github.com/namelew/DHTWithMutualExclusion/packages/messages"
@@ -81,6 +83,14 @@ func (cd *Coordinator) Handler() {
 	}
 
 	go cd.queueHandler()
+
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		<-c
+		log.Println("Finishing Coordinator")
+		os.Exit(0)
+	}()
 
 	for {
 		request, err := l.Accept()

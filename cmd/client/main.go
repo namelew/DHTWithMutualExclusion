@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/joho/godotenv"
+	"github.com/namelew/DHTWithMutualExclusion/internal/mutex"
 	"github.com/namelew/DHTWithMutualExclusion/packages/messages"
 )
 
@@ -23,7 +25,13 @@ func sanitaze(s string) string {
 }
 
 func main() {
+	if err := godotenv.Load(".env"); err != nil {
+		log.Panic(err.Error())
+	}
+
 	r := bufio.NewReader(os.Stdin)
+
+	mutex := mutex.New(3, "localhost:30010")
 
 	for {
 		fmt.Println("Expect: Action Adress Key Course Name")
@@ -67,21 +75,29 @@ func main() {
 			m.Payload.Turmas = append(m.Payload.Turmas, sanitaze(turma))
 		}
 
+		if err := mutex.RequestAcess(); err != nil {
+			log.Println(err.Error())
+			continue
+		}
+
 		conn, err := net.Dial("tcp", input[1])
 
 		if err != nil {
+			mutex.Unlock()
 			log.Println(err.Error())
 			continue
 		}
 
 		if err := m.Send(conn); err != nil {
 			conn.Close()
+			mutex.Unlock()
 			log.Println("Unable to send request. ", err.Error())
 			continue
 		}
 
 		if err := m.Receive(conn); err != nil {
 			conn.Close()
+			mutex.Unlock()
 			log.Println("Unable to receive response. ", err.Error())
 			continue
 		}
@@ -89,5 +105,7 @@ func main() {
 		conn.Close()
 
 		log.Println(m)
+
+		mutex.Unlock()
 	}
 }
