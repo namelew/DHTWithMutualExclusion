@@ -48,7 +48,7 @@ func main() {
 			continue
 		}
 
-		var m messages.Message
+		var request, response messages.Message
 
 		a, err := strconv.Atoi(input[0])
 
@@ -57,10 +57,10 @@ func main() {
 			continue
 		}
 
-		m.Action = messages.Action(a)
-		m.Payload.CPF = input[2]
-		m.Payload.Curso = sanitaze(input[3])
-		m.Payload.Nome = sanitaze(strings.Join(input[4:], " "))
+		request.Action = messages.Action(a)
+		request.Payload.CPF = input[2]
+		request.Payload.Curso = sanitaze(input[3])
+		request.Payload.Nome = sanitaze(strings.Join(input[4:], " "))
 
 		fmt.Println("Expect: Turma1 Turma2 ...")
 
@@ -72,7 +72,7 @@ func main() {
 		}
 
 		for _, turma := range strings.Split(string(p), " ") {
-			m.Payload.Turmas = append(m.Payload.Turmas, sanitaze(turma))
+			request.Payload.Turmas = append(request.Payload.Turmas, sanitaze(turma))
 		}
 
 		if err := mutex.RequestAcess(); err != nil {
@@ -88,14 +88,14 @@ func main() {
 			continue
 		}
 
-		if err := m.Send(conn); err != nil {
+		if err := request.Send(conn); err != nil {
 			conn.Close()
 			mutex.Unlock()
 			log.Println("Unable to send request. ", err.Error())
 			continue
 		}
 
-		if err := m.Receive(conn); err != nil {
+		if err := response.Receive(conn); err != nil {
 			conn.Close()
 			mutex.Unlock()
 			log.Println("Unable to receive response. ", err.Error())
@@ -106,19 +106,35 @@ func main() {
 
 		mutex.Unlock()
 
-		switch m.Action {
+		switch response.Action {
 		case messages.ACK:
-			empty := messages.Aluno{}
-			log.Println("Sucess!")
-			if m.Payload.Nome != empty.Nome {
-				log.Println("Resultado")
-				log.Println("Nome:", m.Payload.Nome)
-				log.Println("CPF:", m.Payload.CPF)
-				log.Println("Curso:", m.Payload.Curso)
-				log.Println("Turmas:", m.Payload.Turmas)
+			log.Printf("Sucess! ")
+			switch request.Action {
+			case messages.INSERT:
+				log.Printf("Registro de chave %s foi inserido corretamente na DHT\n", request.Payload.Value())
+			case messages.QUERY:
+				log.Println("Resultado:")
+				log.Println("Nome:", response.Payload.Nome)
+				log.Println("CPF:", response.Payload.CPF)
+				log.Println("Curso:", response.Payload.Curso)
+				log.Println("Turmas:", response.Payload.Turmas)
+			case messages.REMOVE:
+				log.Printf("Registro de chave %s foi removido corretamente da DHT\n", request.Payload.Value())
+			default:
+				log.Println("Resposta inesperada!")
 			}
 		case messages.ERROR:
 			log.Println("Erro!")
+			switch request.Action {
+			case messages.INSERT:
+				log.Printf("Error ao inserir registro de chave %s na DHT\n", request.Payload.Value())
+			case messages.QUERY:
+				log.Printf("Error ao busca registro de chave %s na DHT\n", request.Payload.Value())
+			case messages.REMOVE:
+				log.Printf("Error ao remover registro de chave %s da DHT\n", request.Payload.Value())
+			default:
+				log.Println("Error inesperado!")
+			}
 		}
 	}
 }
